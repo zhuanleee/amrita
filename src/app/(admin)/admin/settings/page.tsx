@@ -29,6 +29,8 @@ export default function SettingsPage() {
   const [metaCAPIToken, setMetaCAPIToken] = useState("");
   const [metaSaving, setMetaSaving] = useState(false);
   const [metaLoading, setMetaLoading] = useState(true);
+  const [xhsPixelId, setXhsPixelId] = useState("");
+  const [xhsSaving, setXhsSaving] = useState(false);
   const [epApiKey, setEpApiKey] = useState("");
   const [epSandbox, setEpSandbox] = useState(true);
   const [epSaving, setEpSaving] = useState(false);
@@ -41,6 +43,7 @@ export default function SettingsPage() {
           const settings = await res.json();
           setMetaPixelId(settings.meta_pixel_id || "");
           setMetaCAPIToken(settings.meta_capi_token || "");
+          setXhsPixelId(settings.xhs_pixel_id || "");
           setEpApiKey(settings.easyparcel_api_key || "");
           setEpSandbox(settings.easyparcel_sandbox !== "false");
         }
@@ -73,6 +76,28 @@ export default function SettingsPage() {
       toast.error("Failed to save settings");
     }
     setMetaSaving(false);
+  };
+
+  const saveXhsSettings = async () => {
+    setXhsSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          xhs_pixel_id: xhsPixelId.trim(),
+        }),
+      });
+      if (res.ok) {
+        toast.success("Xiaohongshu tracking settings saved!");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to save settings");
+      }
+    } catch {
+      toast.error("Failed to save settings");
+    }
+    setXhsSaving(false);
   };
 
   const saveEasyParcelSettings = async () => {
@@ -158,6 +183,50 @@ export default function SettingsPage() {
               <li>InitiateCheckout — checkout started</li>
               <li>Purchase — order completed (client + server-side)</li>
             </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Xiaohongshu (小红书) Tracking */}
+      <Card className="bg-amrita-cream border-none shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Xiaohongshu (小红书) Tracking</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Connect your Xiaohongshu (RED) Pixel to track ad performance and measure conversions from XHS campaigns.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="xhs-pixel-id">XHS Pixel ID</Label>
+            <Input
+              id="xhs-pixel-id"
+              placeholder="e.g. xhs_pixel_123456"
+              value={metaLoading ? "" : xhsPixelId}
+              onChange={(e) => setXhsPixelId(e.target.value)}
+              disabled={metaLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Find this in your Xiaohongshu Advertiser Platform → Tracking → Pixel Settings
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={saveXhsSettings}
+              disabled={xhsSaving || metaLoading}
+              className="bg-amrita-gold hover:bg-amrita-gold/90 text-white"
+            >
+              {xhsSaving ? "Saving..." : "Save"}
+            </Button>
+            {xhsPixelId && (
+              <span className="text-xs text-amrita-teal font-medium">Connected</span>
+            )}
+          </div>
+          <Separator />
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">UTM tracking tip:</p>
+            <p className="text-xs text-muted-foreground">
+              Use <code className="bg-muted px-1 py-0.5 rounded text-[11px]">?utm_source=xiaohongshu&utm_medium=post&utm_campaign=launch</code> in your XHS post links to track campaign performance in the CRM.
+            </p>
           </div>
         </CardContent>
       </Card>
