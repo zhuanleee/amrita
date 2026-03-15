@@ -54,11 +54,16 @@ export async function GET(request: Request) {
     }
 
     const tokenData = await tokenRes.json();
-    const { access_token, refresh_token, expires_at } = tokenData;
+    console.log("EasyParcel token response:", JSON.stringify(tokenData));
+
+    // Handle different response formats
+    const access_token = tokenData.access_token || tokenData.data?.access_token || tokenData.token;
+    const refresh_token = tokenData.refresh_token || tokenData.data?.refresh_token;
+    const expires_at = tokenData.expires_at || tokenData.data?.expires_at || tokenData.expires_in;
 
     if (!access_token) {
       return NextResponse.redirect(
-        `${origin}/admin/settings?easyparcel=error&reason=no_access_token`
+        `${origin}/admin/settings?easyparcel=error&reason=no_access_token&debug=${encodeURIComponent(JSON.stringify(Object.keys(tokenData)))}`
       );
     }
 
