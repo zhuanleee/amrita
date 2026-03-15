@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { Plus, Send, Eye, MousePointerClick } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { KpiCard } from "@/components/admin/kpi-card";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { Campaign } from "@/lib/types";
 
 type CampaignStatus = "draft" | "scheduled" | "sent" | "cancelled";
@@ -31,15 +34,28 @@ const channelLabels: Record<CampaignChannel, string> = {
   sms: "SMS",
 };
 
-export default async function MarketingPage() {
-  const supabase = await createClient();
+export default function MarketingPage() {
+  const [campaignList, setCampaignList] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { data: campaigns } = await supabase
-    .from("campaigns")
-    .select("*")
-    .order("created_at", { ascending: false });
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
 
-  const campaignList: Campaign[] = campaigns ?? [];
+      const { data: campaigns } = await supabase
+        .from("campaigns")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      setCampaignList((campaigns as Campaign[]) ?? []);
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+  }
 
   // Compute stats from campaigns
   const sentCampaigns = campaignList.filter((c) => c.status === "sent");

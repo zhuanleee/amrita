@@ -1,105 +1,150 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { DollarSign, ShoppingCart, Clock, TrendingUp, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/components/admin/kpi-card";
 import { RevenueChart, RecentOrdersTable } from "@/components/admin/dashboard-charts";
 import { formatMYR } from "@/lib/currency";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
+import type { OrderStatus } from "@/lib/types";
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
+interface DashboardData {
+  todayRevenue: number;
+  todayOrderCount: number;
+  pendingCount: number;
+  customerCount: number;
+  avgOrderValue: number;
+  revenueChartData: { date: string; revenue: number }[];
+  recentOrdersWithItems: {
+    id: string;
+    order_number: string;
+    customer_name: string;
+    total: number;
+    status: OrderStatus;
+    created_at: string;
+    item_count: number;
+  }[];
+}
 
-  // Today's date boundaries (Malaysia timezone)
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch today's orders (excluding cancelled/refunded)
-  const { data: todayOrders } = await supabase
-    .from("orders")
-    .select("total")
-    .gte("created_at", todayStart)
-    .not("status", "in", '("cancelled","refunded")');
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
 
-  const todayRevenue = (todayOrders ?? []).reduce((sum, o) => sum + (o.total ?? 0), 0);
-  const todayOrderCount = (todayOrders ?? []).length;
+      // Today's date boundaries (Malaysia timezone)
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
 
-  // Fetch pending orders count
-  const { count: pendingCount } = await supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending_payment");
+      // Fetch today's orders (excluding cancelled/refunded)
+      const { data: todayOrders } = await supabase
+        .from("orders")
+        .select("total")
+        .gte("created_at", todayStart)
+        .not("status", "in", '("cancelled","refunded")');
 
-  // Fetch total customers count
-  const { count: customerCount } = await supabase
-    .from("customers")
-    .select("id", { count: "exact", head: true });
+      const todayRevenue = (todayOrders ?? []).reduce((sum, o) => sum + (o.total ?? 0), 0);
+      const todayOrderCount = (todayOrders ?? []).length;
 
-  // Fetch all non-cancelled orders for AVG calculation
-  const { data: allOrders } = await supabase
-    .from("orders")
-    .select("total")
-    .not("status", "in", '("cancelled","refunded")');
+      // Fetch pending orders count
+      const { count: pendingCount } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending_payment");
 
-  const avgOrderValue =
-    allOrders && allOrders.length > 0
-      ? allOrders.reduce((sum, o) => sum + (o.total ?? 0), 0) / allOrders.length
-      : 0;
+      // Fetch total customers count
+      const { count: customerCount } = await supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true });
 
-  // Fetch revenue chart data - last 30 days from orders
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-  const thirtyDaysStart = new Date(
-    thirtyDaysAgo.getFullYear(),
-    thirtyDaysAgo.getMonth(),
-    thirtyDaysAgo.getDate()
-  ).toISOString();
+      // Fetch all non-cancelled orders for AVG calculation
+      const { data: allOrders } = await supabase
+        .from("orders")
+        .select("total")
+        .not("status", "in", '("cancelled","refunded")');
 
-  const { data: recentOrders } = await supabase
-    .from("orders")
-    .select("total, created_at")
-    .gte("created_at", thirtyDaysStart)
-    .not("status", "in", '("cancelled","refunded")')
-    .order("created_at");
+      const avgOrderValue =
+        allOrders && allOrders.length > 0
+          ? allOrders.reduce((sum, o) => sum + (o.total ?? 0), 0) / allOrders.length
+          : 0;
 
-  // Group orders by date for chart
-  const revenueByDate: Record<string, number> = {};
-  for (let i = 0; i < 30; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - 29 + i);
-    const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
-    revenueByDate[key] = 0;
+      // Fetch revenue chart data - last 30 days from orders
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+      const thirtyDaysStart = new Date(
+        thirtyDaysAgo.getFullYear(),
+        thirtyDaysAgo.getMonth(),
+        thirtyDaysAgo.getDate()
+      ).toISOString();
+
+      const { data: recentOrders } = await supabase
+        .from("orders")
+        .select("total, created_at")
+        .gte("created_at", thirtyDaysStart)
+        .not("status", "in", '("cancelled","refunded")')
+        .order("created_at");
+
+      // Group orders by date for chart
+      const revenueByDate: Record<string, number> = {};
+      for (let i = 0; i < 30; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - 29 + i);
+        const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+        revenueByDate[key] = 0;
+      }
+
+      (recentOrders ?? []).forEach((order) => {
+        const d = new Date(order.created_at);
+        const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+        if (key in revenueByDate) {
+          revenueByDate[key] += order.total ?? 0;
+        }
+      });
+
+      const revenueChartData = Object.entries(revenueByDate).map(([date, revenue]) => ({
+        date,
+        revenue: Math.round(revenue * 100) / 100,
+      }));
+
+      // Fetch recent orders with item counts
+      const { data: recentOrdersList } = await supabase
+        .from("orders")
+        .select("id, order_number, customer_name, total, status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      // Get item counts for recent orders
+      const recentOrdersWithItems = await Promise.all(
+        (recentOrdersList ?? []).map(async (order) => {
+          const { data: items } = await supabase
+            .from("order_items")
+            .select("quantity")
+            .eq("order_id", order.id);
+          const itemCount = (items ?? []).reduce((sum, item) => sum + item.quantity, 0);
+          return { ...order, item_count: itemCount };
+        })
+      );
+
+      setData({
+        todayRevenue,
+        todayOrderCount,
+        pendingCount: pendingCount ?? 0,
+        customerCount: customerCount ?? 0,
+        avgOrderValue,
+        revenueChartData,
+        recentOrdersWithItems,
+      });
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  if (loading || !data) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   }
-
-  (recentOrders ?? []).forEach((order) => {
-    const d = new Date(order.created_at);
-    const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
-    if (key in revenueByDate) {
-      revenueByDate[key] += order.total ?? 0;
-    }
-  });
-
-  const revenueChartData = Object.entries(revenueByDate).map(([date, revenue]) => ({
-    date,
-    revenue: Math.round(revenue * 100) / 100,
-  }));
-
-  // Fetch recent orders with item counts
-  const { data: recentOrdersList } = await supabase
-    .from("orders")
-    .select("id, order_number, customer_name, total, status, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  // Get item counts for recent orders
-  const recentOrdersWithItems = await Promise.all(
-    (recentOrdersList ?? []).map(async (order) => {
-      const { data: items } = await supabase
-        .from("order_items")
-        .select("quantity")
-        .eq("order_id", order.id);
-      const itemCount = (items ?? []).reduce((sum, item) => sum + item.quantity, 0);
-      return { ...order, item_count: itemCount };
-    })
-  );
 
   return (
     <div className="space-y-6">
@@ -107,36 +152,36 @@ export default async function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
           title="Today's Revenue"
-          value={formatMYR(todayRevenue)}
+          value={formatMYR(data.todayRevenue)}
           icon={DollarSign}
         />
         <KpiCard
           title="Today's Orders"
-          value={String(todayOrderCount)}
+          value={String(data.todayOrderCount)}
           icon={ShoppingCart}
         />
         <KpiCard
           title="Pending Orders"
-          value={String(pendingCount ?? 0)}
+          value={String(data.pendingCount)}
           icon={Clock}
         />
         <KpiCard
           title="Avg Order Value"
-          value={formatMYR(avgOrderValue)}
+          value={formatMYR(data.avgOrderValue)}
           icon={TrendingUp}
         />
         <KpiCard
           title="Total Customers"
-          value={String(customerCount ?? 0)}
+          value={String(data.customerCount)}
           icon={Users}
         />
       </div>
 
       {/* Revenue Chart */}
-      <RevenueChart data={revenueChartData} />
+      <RevenueChart data={data.revenueChartData} />
 
       {/* Recent Orders */}
-      <RecentOrdersTable orders={recentOrdersWithItems} />
+      <RecentOrdersTable orders={data.recentOrdersWithItems} />
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">

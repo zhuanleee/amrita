@@ -1,3 +1,7 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, DollarSign, TrendingUp, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +19,7 @@ import {
 import { KpiCard } from "@/components/admin/kpi-card";
 import { OrderStatusBadge } from "@/components/admin/order-status-badge";
 import { formatMYR } from "@/lib/currency";
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 function computeSegment(orderCount: number, ltv: number, daysSinceLast: number) {
   if (orderCount === 0) return "New";
@@ -35,33 +38,67 @@ const segmentColors: Record<string, string> = {
   Potential: "bg-cyan-100 text-cyan-800 border-cyan-200",
 };
 
-export default async function CustomerDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface CustomerDetailData {
+  customer: any;
+  customerOrders: any[];
+}
 
-  // Fetch customer
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("id", id)
-    .single();
+export default function CustomerDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
 
-  if (!customer) {
-    notFound();
+  const [data, setData] = useState<CustomerDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
+
+      // Fetch customer
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (!customer) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch their orders
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("customer_id", id)
+        .order("created_at", { ascending: false });
+
+      setData({ customer, customerOrders: orders ?? [] });
+      setLoading(false);
+    };
+    fetchData();
+  }, [id]);
+
+  if (loading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   }
 
-  // Fetch their orders
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("customer_id", id)
-    .order("created_at", { ascending: false });
+  if (notFound || !data) {
+    return (
+      <div className="py-12 text-center">
+        <h2 className="text-xl font-semibold mb-2">Customer Not Found</h2>
+        <p className="text-muted-foreground mb-4">The customer you are looking for does not exist.</p>
+        <Link href="/admin/customers">
+          <Button variant="outline">Back to Customers</Button>
+        </Link>
+      </div>
+    );
+  }
 
-  const customerOrders = orders ?? [];
+  const { customer, customerOrders } = data;
 
   // Compute metrics
   const validOrders = customerOrders.filter(

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { Pencil, Trash2, Plus, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,17 +14,49 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatMYR } from "@/lib/currency";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 
-export default async function ProductsPage() {
-  const supabase = await createClient();
+interface ProductVariant {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number;
+  stock: number;
+  sort_order: number;
+}
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("*, product_variants(*)")
-    .order("created_at");
+interface Product {
+  id: string;
+  name: string;
+  sku: string | null;
+  available: boolean;
+  price: number;
+  stock: number;
+  product_variants: ProductVariant[];
+}
 
-  const productList = products ?? [];
+export default function ProductsPage() {
+  const [productList, setProductList] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
+
+      const { data: products } = await supabase
+        .from("products")
+        .select("*, product_variants(*)")
+        .order("created_at");
+
+      setProductList((products as Product[]) ?? []);
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+  }
 
   return (
     <div className="space-y-4">

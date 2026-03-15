@@ -1,3 +1,7 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,46 +18,79 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { OrderStatusBadge } from "@/components/admin/order-status-badge";
 import { formatMYR } from "@/lib/currency";
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { OrderStatusUpdater } from "@/components/admin/order-status-updater";
 
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface OrderDetailData {
+  order: any;
+  orderItems: any[];
+}
 
-  // Try fetching by UUID first
-  let { data: order } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", id)
-    .single();
+export default function OrderDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
 
-  // If not found, try by order_number
-  if (!order) {
-    const { data: orderByNumber } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("order_number", id)
-      .single();
-    order = orderByNumber;
+  const [data, setData] = useState<OrderDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
+
+      // Try fetching by UUID first
+      let { data: order } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      // If not found, try by order_number
+      if (!order) {
+        const { data: orderByNumber } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("order_number", id)
+          .single();
+        order = orderByNumber;
+      }
+
+      if (!order) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch order items
+      const { data: items } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", order.id);
+
+      setData({ order, orderItems: items ?? [] });
+      setLoading(false);
+    };
+    fetchData();
+  }, [id]);
+
+  if (loading) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   }
 
-  if (!order) {
-    notFound();
+  if (notFound || !data) {
+    return (
+      <div className="py-12 text-center">
+        <h2 className="text-xl font-semibold mb-2">Order Not Found</h2>
+        <p className="text-muted-foreground mb-4">The order you are looking for does not exist.</p>
+        <Link href="/admin/orders">
+          <Button variant="outline">Back to Orders</Button>
+        </Link>
+      </div>
+    );
   }
 
-  // Fetch order items
-  const { data: items } = await supabase
-    .from("order_items")
-    .select("*")
-    .eq("order_id", order.id);
-
-  const orderItems = items ?? [];
+  const { order, orderItems } = data;
 
   return (
     <div className="space-y-6">
