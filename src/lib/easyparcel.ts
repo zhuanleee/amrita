@@ -194,25 +194,47 @@ export async function checkRates(
       }),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      console.error(`EasyParcel rate check failed: ${res.status}`);
+      console.error(`EasyParcel rate check failed: ${res.status}`, JSON.stringify(data));
       return [];
     }
 
-    const data = await res.json();
+    console.log("EasyParcel rate response:", JSON.stringify(data).substring(0, 500));
 
-    // Parse response — the OpenAPI may return rates in various structures
-    const rates = Array.isArray(data)
-      ? data
-      : Array.isArray(data.rates)
-        ? data.rates
-        : Array.isArray(data.result)
-          ? data.result
-          : [];
+    // Parse response — handle multiple possible formats
+    // Format 1: { data: [{ quotations: [...] }] }
+    // Format 2: { rates: [...] }
+    // Format 3: { result: [...] }
+    let rates: Record<string, unknown>[] = [];
+
+    if (data.data && Array.isArray(data.data)) {
+      // OpenAPI format: data[0].quotations
+      for (const item of data.data) {
+        if (Array.isArray(item.quotations)) {
+          for (const q of item.quotations) {
+            rates.push({
+              service_id: q.courier?.service_id ?? q.service_id,
+              courier_name: q.courier?.courier_name ?? q.courier_name ?? q.service_name,
+              price: parseFloat(q.pricing?.total_amount ?? q.pricing?.shipment_price ?? q.price ?? "0"),
+              delivery: q.delivery ?? q.delivery_days ?? "",
+              pickup_date: q.pickup_date ?? "",
+            });
+          }
+        }
+      }
+    } else if (Array.isArray(data.rates)) {
+      rates = data.rates;
+    } else if (Array.isArray(data.result)) {
+      rates = data.result;
+    } else if (Array.isArray(data)) {
+      rates = data;
+    }
 
     return rates
-      .filter((r: Record<string, unknown>) => r.service_id)
-      .map((r: Record<string, unknown>) => ({
+      .filter((r) => r.service_id)
+      .map((r) => ({
         courier_name: String(r.courier_name ?? r.service_name ?? ""),
         service_id: String(r.service_id),
         price: parseFloat(String(r.price ?? r.rate ?? "0")),

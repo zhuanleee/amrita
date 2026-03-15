@@ -22,20 +22,29 @@ export async function GET(request: Request) {
   const accessToken = await getAccessToken();
 
   if (accessToken) {
-    const easyparcelRates = await checkRates(
-      accessToken,
-      SENDER_POSTCODE,
-      postcode,
-      state,
-      weight
-    );
+    try {
+      const easyparcelRates = await checkRates(
+        accessToken,
+        SENDER_POSTCODE,
+        postcode,
+        state,
+        weight
+      );
 
-    if (easyparcelRates.length > 0) {
-      return NextResponse.json({
-        source: "easyparcel",
-        rates: easyparcelRates,
-      });
+      if (easyparcelRates.length > 0) {
+        return NextResponse.json({
+          source: "easyparcel",
+          rates: easyparcelRates,
+        });
+      }
+    } catch (err) {
+      console.error("EasyParcel checkRates error:", err);
     }
+  }
+
+  // Debug: log why EasyParcel rates weren't returned
+  if (!accessToken) {
+    console.log("EasyParcel: No access token found");
   }
 
   // Fall back to flat rates
