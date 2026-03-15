@@ -1,56 +1,7 @@
 import Link from "next/link";
-import type { Product } from "@/lib/types";
 import { SITE_TAGLINE } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/server";
 import { ProductShowcase } from "./product-showcase";
-
-const PLACEHOLDER_PRODUCTS: Product[] = [
-  {
-    id: "1",
-    slug: "herbal-mint",
-    name: "凉茶薄荷糖",
-    name_en: "Herbal Mint Candy",
-    price: 12.9,
-    variant_color: "cream",
-    metadata: { sugar_free: true, ingredients: ["Herbal tea extract", "Mint", "Xylitol"], benefits: ["Refreshing", "Sugar-free", "Traditional formula"] },
-    description: "Traditional herbal tea formula in a sugar-free mint candy. A cooling sensation that goes beyond ordinary mint.",
-    description_en: "Traditional herbal tea formula in a sugar-free mint candy.",
-    category: "candy",
-    compare_at_price: null,
-    cost_price: null,
-    sku: "AMR-HM-001",
-    stock: 100,
-    weight_grams: 45,
-    badge: null,
-    featured: true,
-    available: true,
-    image_urls: [],
-    created_at: "",
-    updated_at: "",
-  },
-  {
-    id: "2",
-    slug: "chrysanthemum-ginseng-mint",
-    name: "菊花洋参薄荷糖",
-    name_en: "Chrysanthemum Ginseng Mint",
-    price: 14.9,
-    variant_color: "navy",
-    metadata: { sugar_free: true, ingredients: ["Chrysanthemum", "American Ginseng", "Mint", "Xylitol"], benefits: ["Cooling", "Energizing", "Sugar-free", "Herbal wellness"] },
-    description: "Chrysanthemum and American Ginseng blended with refreshing mint. A premium sugar-free herbal candy for daily wellness.",
-    description_en: "Chrysanthemum and American Ginseng blended with refreshing mint.",
-    category: "candy",
-    compare_at_price: null,
-    cost_price: null,
-    sku: "AMR-CG-001",
-    stock: 100,
-    weight_grams: 45,
-    badge: null,
-    featured: true,
-    available: true,
-    image_urls: [],
-    created_at: "",
-    updated_at: "",
-  },
-];
 
 function DewdropLogoLarge() {
   return (
@@ -83,7 +34,12 @@ function DewdropLogoLarge() {
   );
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient();
+  const { data: products } = await supabase
+    .from("products")
+    .select("*")
+    .eq("featured", true);
   return (
     <>
       {/* Hero Section */}
@@ -223,7 +179,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-12">
-            <ProductShowcase products={PLACEHOLDER_PRODUCTS} />
+            <ProductShowcase products={products || []} />
           </div>
         </div>
       </section>

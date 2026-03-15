@@ -1,190 +1,142 @@
-"use client";
-
 import { DollarSign, ShoppingCart, Clock, TrendingUp, Users } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { KpiCard } from "@/components/admin/kpi-card";
-import { OrderStatusBadge } from "@/components/admin/order-status-badge";
+import { RevenueChart, RecentOrdersTable } from "@/components/admin/dashboard-charts";
 import { formatMYR } from "@/lib/currency";
-import type { OrderStatus } from "@/lib/types";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
-const MOCK_KPIS = {
-  todayRevenue: 1250.80,
-  todayOrders: 15,
-  pendingOrders: 3,
-  avgOrderValue: 42.50,
-  totalCustomers: 234,
-};
+export default async function DashboardPage() {
+  const supabase = await createClient();
 
-// 30-day mock revenue data
-const revenueData = Array.from({ length: 30 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - 29 + i);
-  return {
-    date: date.toLocaleDateString("en-MY", { month: "short", day: "numeric" }),
-    revenue: Math.round((800 + Math.random() * 900) * 100) / 100,
-  };
-});
+  // Today's date boundaries (Malaysia timezone)
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
 
-const MOCK_RECENT_ORDERS: {
-  orderNumber: string;
-  customer: string;
-  items: number;
-  total: number;
-  status: OrderStatus;
-  date: string;
-}[] = [
-  { orderNumber: "AMR-2026-0142", customer: "Tan Wei Ming", items: 3, total: 89.70, status: "delivered", date: "2026-03-14" },
-  { orderNumber: "AMR-2026-0141", customer: "Siti Nurhaliza", items: 2, total: 45.00, status: "shipped", date: "2026-03-14" },
-  { orderNumber: "AMR-2026-0140", customer: "Lim Kok Wai", items: 5, total: 125.50, status: "processing", date: "2026-03-13" },
-  { orderNumber: "AMR-2026-0139", customer: "Ahmad Faizal", items: 1, total: 29.90, status: "pending_payment", date: "2026-03-13" },
-  { orderNumber: "AMR-2026-0138", customer: "Priya Devi", items: 4, total: 98.00, status: "confirmed", date: "2026-03-12" },
-];
+  // Fetch today's orders (excluding cancelled/refunded)
+  const { data: todayOrders } = await supabase
+    .from("orders")
+    .select("total")
+    .gte("created_at", todayStart)
+    .not("status", "in", '("cancelled","refunded")');
 
-export default function DashboardPage() {
+  const todayRevenue = (todayOrders ?? []).reduce((sum, o) => sum + (o.total ?? 0), 0);
+  const todayOrderCount = (todayOrders ?? []).length;
+
+  // Fetch pending orders count
+  const { count: pendingCount } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending_payment");
+
+  // Fetch total customers count
+  const { count: customerCount } = await supabase
+    .from("customers")
+    .select("id", { count: "exact", head: true });
+
+  // Fetch all non-cancelled orders for AVG calculation
+  const { data: allOrders } = await supabase
+    .from("orders")
+    .select("total")
+    .not("status", "in", '("cancelled","refunded")');
+
+  const avgOrderValue =
+    allOrders && allOrders.length > 0
+      ? allOrders.reduce((sum, o) => sum + (o.total ?? 0), 0) / allOrders.length
+      : 0;
+
+  // Fetch revenue chart data - last 30 days from orders
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+  const thirtyDaysStart = new Date(
+    thirtyDaysAgo.getFullYear(),
+    thirtyDaysAgo.getMonth(),
+    thirtyDaysAgo.getDate()
+  ).toISOString();
+
+  const { data: recentOrders } = await supabase
+    .from("orders")
+    .select("total, created_at")
+    .gte("created_at", thirtyDaysStart)
+    .not("status", "in", '("cancelled","refunded")')
+    .order("created_at");
+
+  // Group orders by date for chart
+  const revenueByDate: Record<string, number> = {};
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - 29 + i);
+    const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+    revenueByDate[key] = 0;
+  }
+
+  (recentOrders ?? []).forEach((order) => {
+    const d = new Date(order.created_at);
+    const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+    if (key in revenueByDate) {
+      revenueByDate[key] += order.total ?? 0;
+    }
+  });
+
+  const revenueChartData = Object.entries(revenueByDate).map(([date, revenue]) => ({
+    date,
+    revenue: Math.round(revenue * 100) / 100,
+  }));
+
+  // Fetch recent orders with item counts
+  const { data: recentOrdersList } = await supabase
+    .from("orders")
+    .select("id, order_number, customer_name, total, status, created_at")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  // Get item counts for recent orders
+  const recentOrdersWithItems = await Promise.all(
+    (recentOrdersList ?? []).map(async (order) => {
+      const { data: items } = await supabase
+        .from("order_items")
+        .select("quantity")
+        .eq("order_id", order.id);
+      const itemCount = (items ?? []).reduce((sum, item) => sum + item.quantity, 0);
+      return { ...order, item_count: itemCount };
+    })
+  );
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
           title="Today's Revenue"
-          value={formatMYR(MOCK_KPIS.todayRevenue)}
-          change={12.5}
-          changeType="up"
+          value={formatMYR(todayRevenue)}
           icon={DollarSign}
         />
         <KpiCard
           title="Today's Orders"
-          value={String(MOCK_KPIS.todayOrders)}
-          change={8.3}
-          changeType="up"
+          value={String(todayOrderCount)}
           icon={ShoppingCart}
         />
         <KpiCard
           title="Pending Orders"
-          value={String(MOCK_KPIS.pendingOrders)}
-          change={-2}
-          changeType="down"
+          value={String(pendingCount ?? 0)}
           icon={Clock}
         />
         <KpiCard
           title="Avg Order Value"
-          value={formatMYR(MOCK_KPIS.avgOrderValue)}
-          change={3.2}
-          changeType="up"
+          value={formatMYR(avgOrderValue)}
           icon={TrendingUp}
         />
         <KpiCard
           title="Total Customers"
-          value={String(MOCK_KPIS.totalCustomers)}
-          change={5.1}
-          changeType="up"
+          value={String(customerCount ?? 0)}
           icon={Users}
         />
       </div>
 
       {/* Revenue Chart */}
-      <Card className="bg-amrita-cream border-none shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Revenue (Last 30 Days)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#c8a96e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#c8a96e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => `RM ${v}`}
-                />
-                <Tooltip
-                  formatter={(value) => [formatMYR(Number(value)), "Revenue"]}
-                  contentStyle={{
-                    backgroundColor: "#f5f1ea",
-                    border: "1px solid #d5cfc6",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#c8a96e"
-                  strokeWidth={2}
-                  fill="url(#goldGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      <RevenueChart data={revenueChartData} />
 
       {/* Recent Orders */}
-      <Card className="bg-amrita-cream border-none shadow-sm">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">Recent Orders</CardTitle>
-          <Link href="/admin/orders">
-            <Button variant="outline" size="sm">View All</Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order #</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-center">Items</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {MOCK_RECENT_ORDERS.map((order) => (
-                <TableRow key={order.orderNumber}>
-                  <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell className="text-center">{order.items}</TableCell>
-                  <TableCell className="text-right">{formatMYR(order.total)}</TableCell>
-                  <TableCell>
-                    <OrderStatusBadge status={order.status} />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{order.date}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <RecentOrdersTable orders={recentOrdersWithItems} />
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">

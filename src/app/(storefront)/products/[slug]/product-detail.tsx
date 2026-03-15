@@ -5,36 +5,31 @@ import Link from "next/link";
 import { Minus, Plus, ShoppingBag, ArrowLeft } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { formatMYR } from "@/lib/currency";
-import type { Product } from "@/lib/types";
+import type { Product, ProductVariant } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
-const VARIANTS = [
-  { id: "single", name: "Single Tin", priceMultiplier: 1 },
-  { id: "twin", name: "Twin Pack", priceMultiplier: 1.85 },
-  { id: "gift", name: "Gift Box", priceMultiplier: 2.5 },
-];
-
 interface ProductDetailProps {
   product: Product;
+  variants: ProductVariant[];
 }
 
-export function ProductDetail({ product }: ProductDetailProps) {
+export function ProductDetail({ product, variants }: ProductDetailProps) {
   const { addItem } = useCart();
-  const [selectedVariant, setSelectedVariant] = useState("single");
+  const [selectedVariantId, setSelectedVariantId] = useState(variants[0]?.id ?? null);
   const [quantity, setQuantity] = useState(1);
 
-  const variant = VARIANTS.find((v) => v.id === selectedVariant)!;
-  const displayPrice = product.price * variant.priceMultiplier;
+  const selectedVariant = variants.find((v) => v.id === selectedVariantId);
+  const displayPrice = selectedVariant?.price ?? product.price;
 
   const isNavy = product.variant_color === "navy";
 
   const handleAddToCart = () => {
-    addItem(product, undefined, quantity);
+    addItem(product, selectedVariant, quantity);
     toast.success(`${product.name_en} added to bag`, {
-      description: `${variant.name} x ${quantity}`,
+      description: `${selectedVariant?.name ?? "Default"} x ${quantity}`,
     });
   };
 
@@ -121,27 +116,30 @@ export function ProductDetail({ product }: ProductDetailProps) {
             <Separator />
 
             {/* Variant selector */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground">Package</label>
-              <div className="grid grid-cols-3 gap-3">
-                {VARIANTS.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setSelectedVariant(v.id)}
-                    className={`rounded-lg border px-4 py-3 text-center text-sm font-medium transition-all ${
-                      selectedVariant === v.id
-                        ? "border-amrita-gold bg-amrita-gold/10 text-gold"
-                        : "border-border bg-card text-foreground hover:border-amrita-gold/50"
-                    }`}
-                  >
-                    <div>{v.name}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {formatMYR(product.price * v.priceMultiplier)}
-                    </div>
-                  </button>
-                ))}
+            {variants.length > 0 && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Package</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {variants.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedVariantId(v.id)}
+                      disabled={!v.available}
+                      className={`rounded-lg border px-4 py-3 text-center text-sm font-medium transition-all ${
+                        selectedVariantId === v.id
+                          ? "border-amrita-gold bg-amrita-gold/10 text-gold"
+                          : "border-border bg-card text-foreground hover:border-amrita-gold/50"
+                      } ${!v.available ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div>{v.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {formatMYR(v.price)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Quantity selector */}
             <div className="space-y-3">

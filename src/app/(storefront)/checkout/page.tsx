@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard, Wallet, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,7 +25,8 @@ const PAYMENT_METHODS = [
 ] as const;
 
 export default function CheckoutPage() {
-  const { items, subtotal, itemCount } = useCart();
+  const router = useRouter();
+  const { items, subtotal, itemCount, clearCart } = useCart();
   const [shippingState, setShippingState] = useState<MalaysianState>("Kuala Lumpur");
   const [paymentMethod, setPaymentMethod] = useState("fpx");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,10 +37,47 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Payment integration will be connected later
-    await new Promise((r) => setTimeout(r, 1000));
-    toast.info("Payment integration coming soon! Your order has been noted.");
-    setIsSubmitting(false);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer: {
+            name: formData.get("name"),
+            email: formData.get("email") || undefined,
+            phone: formData.get("phone"),
+            address_line1: formData.get("address1"),
+            address_line2: formData.get("address2") || undefined,
+            city: formData.get("city"),
+            postcode: formData.get("postcode"),
+            state: shippingState,
+          },
+          items: items.map((item) => ({
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+          })),
+          payment_method: paymentMethod,
+          notes: formData.get("notes") || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to place order");
+      }
+
+      clearCart();
+      router.push(`/order/${data.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (items.length === 0) {

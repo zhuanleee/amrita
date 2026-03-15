@@ -1,5 +1,3 @@
-"use client";
-
 import { Plus, Send, Eye, MousePointerClick } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { KpiCard } from "@/components/admin/kpi-card";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
+import type { Campaign } from "@/lib/types";
 
 type CampaignStatus = "draft" | "scheduled" | "sent" | "cancelled";
 type CampaignChannel = "email" | "whatsapp" | "sms";
@@ -31,48 +31,27 @@ const channelLabels: Record<CampaignChannel, string> = {
   sms: "SMS",
 };
 
-const MOCK_CAMPAIGNS: {
-  id: string;
-  name: string;
-  channel: CampaignChannel;
-  status: CampaignStatus;
-  recipients: number;
-  sentDate: string | null;
-}[] = [
-  {
-    id: "1",
-    name: "March Promo - Buy 3 Free 1",
-    channel: "whatsapp",
-    status: "sent",
-    recipients: 180,
-    sentDate: "2026-03-01",
-  },
-  {
-    id: "2",
-    name: "New Extra Strong Launch",
-    channel: "email",
-    status: "scheduled",
-    recipients: 234,
-    sentDate: null,
-  },
-  {
-    id: "3",
-    name: "Hari Raya Special Bundle",
-    channel: "sms",
-    status: "draft",
-    recipients: 0,
-    sentDate: null,
-  },
-];
+export default async function MarketingPage() {
+  const supabase = await createClient();
 
-export default function MarketingPage() {
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  const campaignList: Campaign[] = campaigns ?? [];
+
+  // Compute stats from campaigns
+  const sentCampaigns = campaignList.filter((c) => c.status === "sent");
+  const totalSent = sentCampaigns.reduce((sum, c) => sum + c.recipient_count, 0);
+
   return (
     <div className="space-y-6">
       {/* Quick Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard title="Total Sent" value="1,240" icon={Send} />
-        <KpiCard title="Open Rate" value="68.5%" change={2.1} changeType="up" icon={Eye} />
-        <KpiCard title="Click Rate" value="12.3%" change={-0.5} changeType="down" icon={MousePointerClick} />
+        <KpiCard title="Total Sent" value={totalSent.toLocaleString()} icon={Send} />
+        <KpiCard title="Campaigns" value={String(campaignList.length)} icon={Eye} />
+        <KpiCard title="Sent Campaigns" value={String(sentCampaigns.length)} icon={MousePointerClick} />
       </div>
 
       {/* Campaigns Table */}
@@ -85,39 +64,49 @@ export default function MarketingPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-center">Recipients</TableHead>
-                <TableHead>Sent Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {MOCK_CAMPAIGNS.map((campaign) => (
-                <TableRow key={campaign.id}>
-                  <TableCell className="font-medium">{campaign.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{channelLabels[campaign.channel]}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(statusColors[campaign.status])}
-                    >
-                      {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">{campaign.recipients}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {campaign.sentDate ?? "-"}
-                  </TableCell>
+          {campaignList.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              No campaigns yet
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Channel</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-center">Recipients</TableHead>
+                  <TableHead>Sent Date</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {campaignList.map((campaign) => (
+                  <TableRow key={campaign.id}>
+                    <TableCell className="font-medium">{campaign.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {channelLabels[campaign.channel as CampaignChannel] ?? campaign.channel}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(statusColors[campaign.status as CampaignStatus] ?? "")}
+                      >
+                        {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">{campaign.recipient_count}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {campaign.sent_at
+                        ? new Date(campaign.sent_at).toLocaleDateString("en-MY")
+                        : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

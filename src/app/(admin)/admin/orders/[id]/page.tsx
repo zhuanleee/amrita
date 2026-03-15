@@ -1,17 +1,7 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -24,44 +14,46 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { OrderStatusBadge } from "@/components/admin/order-status-badge";
 import { formatMYR } from "@/lib/currency";
-import { ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import { OrderStatusUpdater } from "@/components/admin/order-status-updater";
 
-const MOCK_ORDER = {
-  id: "1",
-  orderNumber: "AMR-2026-0142",
-  status: "processing" as OrderStatus,
-  createdAt: "2026-03-13 14:32",
-  customer: {
-    name: "Tan Wei Ming",
-    email: "wm.tan@email.com",
-    phone: "+60 12-345 6789",
-  },
-  shipping: {
-    line1: "12, Jalan Bukit Bintang",
-    line2: "Lot 3A",
-    city: "Kuala Lumpur",
-    postcode: "50200",
-    state: "Kuala Lumpur",
-  },
-  payment: {
-    method: "Billplz",
-    status: "Paid",
-    ref: "BPZ-8847291",
-    paidAt: "2026-03-13 14:35",
-  },
-  items: [
-    { product: "Herbal Mint Original", variant: "Tin (40g)", qty: 2, price: 29.90, lineTotal: 59.80 },
-    { product: "Herbal Mint Extra Strong", variant: "Pouch (20g)", qty: 1, price: 15.90, lineTotal: 15.90 },
-    { product: "Herbal Mint Original", variant: "Box of 6 Tins", qty: 1, price: 149.00, lineTotal: 149.00 },
-  ],
-  subtotal: 224.70,
-  shippingFee: 8.00,
-  discount: 5.00,
-  total: 227.70,
-};
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
 
-export default function OrderDetailPage() {
-  const [status, setStatus] = useState<string>(MOCK_ORDER.status);
+  // Try fetching by UUID first
+  let { data: order } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  // If not found, try by order_number
+  if (!order) {
+    const { data: orderByNumber } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("order_number", id)
+      .single();
+    order = orderByNumber;
+  }
+
+  if (!order) {
+    notFound();
+  }
+
+  // Fetch order items
+  const { data: items } = await supabase
+    .from("order_items")
+    .select("*")
+    .eq("order_id", order.id);
+
+  const orderItems = items ?? [];
 
   return (
     <div className="space-y-6">
@@ -74,11 +66,13 @@ export default function OrderDetailPage() {
             </Button>
           </Link>
           <div>
-            <h2 className="text-xl font-semibold">{MOCK_ORDER.orderNumber}</h2>
-            <p className="text-sm text-muted-foreground">{MOCK_ORDER.createdAt}</p>
+            <h2 className="text-xl font-semibold">{order.order_number}</h2>
+            <p className="text-sm text-muted-foreground">
+              {new Date(order.created_at).toLocaleString("en-MY")}
+            </p>
           </div>
         </div>
-        <OrderStatusBadge status={MOCK_ORDER.status} />
+        <OrderStatusBadge status={order.status} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -89,99 +83,98 @@ export default function OrderDetailPage() {
               <CardTitle className="text-base">Order Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Variant</TableHead>
-                    <TableHead className="text-center">Qty</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {MOCK_ORDER.items.map((item, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{item.product}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.variant}</TableCell>
-                      <TableCell className="text-center">{item.qty}</TableCell>
-                      <TableCell className="text-right">{formatMYR(item.price)}</TableCell>
-                      <TableCell className="text-right">{formatMYR(item.lineTotal)}</TableCell>
+              {orderItems.length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground">
+                  No items found
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Variant</TableHead>
+                      <TableHead className="text-center">Qty</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-right">Subtotal</TableCell>
-                    <TableCell className="text-right">{formatMYR(MOCK_ORDER.subtotal)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-right">Shipping</TableCell>
-                    <TableCell className="text-right">{formatMYR(MOCK_ORDER.shippingFee)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-right">Discount</TableCell>
-                    <TableCell className="text-right text-red-600">-{formatMYR(MOCK_ORDER.discount)}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-right font-semibold">Total</TableCell>
-                    <TableCell className="text-right font-semibold">{formatMYR(MOCK_ORDER.total)}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {orderItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.product_name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {item.variant_name ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-right">{formatMYR(item.price)}</TableCell>
+                        <TableCell className="text-right">{formatMYR(item.line_total)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-right">Subtotal</TableCell>
+                      <TableCell className="text-right">{formatMYR(order.subtotal)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-right">Shipping</TableCell>
+                      <TableCell className="text-right">{formatMYR(order.shipping_fee)}</TableCell>
+                    </TableRow>
+                    {order.discount_amount > 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right">Discount</TableCell>
+                        <TableCell className="text-right text-red-600">
+                          -{formatMYR(order.discount_amount)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-right font-semibold">Total</TableCell>
+                      <TableCell className="text-right font-semibold">{formatMYR(order.total)}</TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              )}
             </CardContent>
           </Card>
 
           {/* Status Update */}
-          <Card className="bg-amrita-cream border-none shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Update Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3">
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.entries(ORDER_STATUS_LABELS) as [OrderStatus, string][]).map(
-                      ([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-                <Button className="bg-amrita-gold hover:bg-amrita-gold/90 text-white">
-                  Update
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <OrderStatusUpdater orderId={order.id} currentStatus={order.status} />
 
-          {/* Activity Timeline Placeholder */}
+          {/* Activity Timeline */}
           <Card className="bg-amrita-cream border-none shadow-sm">
             <CardHeader>
               <CardTitle className="text-base">Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  { time: "2026-03-13 14:35", event: "Payment confirmed via Billplz" },
-                  { time: "2026-03-13 14:32", event: "Order placed by Tan Wei Ming" },
-                ].map((activity, i) => (
-                  <div key={i} className="flex gap-3">
+                {order.paid_at && (
+                  <div className="flex gap-3">
                     <div className="relative flex flex-col items-center">
                       <div className="size-2.5 rounded-full bg-amrita-gold" />
-                      {i < 1 && <div className="w-px flex-1 bg-border" />}
+                      <div className="w-px flex-1 bg-border" />
                     </div>
                     <div className="pb-4">
-                      <p className="text-sm">{activity.event}</p>
-                      <p className="text-xs text-muted-foreground">{activity.time}</p>
+                      <p className="text-sm">
+                        Payment confirmed{order.payment_method ? ` via ${order.payment_method}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(order.paid_at).toLocaleString("en-MY")}
+                      </p>
                     </div>
                   </div>
-                ))}
+                )}
+                <div className="flex gap-3">
+                  <div className="relative flex flex-col items-center">
+                    <div className="size-2.5 rounded-full bg-amrita-gold" />
+                  </div>
+                  <div className="pb-4">
+                    <p className="text-sm">Order placed by {order.customer_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(order.created_at).toLocaleString("en-MY")}
+                    </p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -194,9 +187,11 @@ export default function OrderDetailPage() {
               <CardTitle className="text-base">Customer</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <p className="font-medium">{MOCK_ORDER.customer.name}</p>
-              <p className="text-muted-foreground">{MOCK_ORDER.customer.email}</p>
-              <p className="text-muted-foreground">{MOCK_ORDER.customer.phone}</p>
+              <p className="font-medium">{order.customer_name}</p>
+              {order.customer_email && (
+                <p className="text-muted-foreground">{order.customer_email}</p>
+              )}
+              <p className="text-muted-foreground">{order.customer_phone}</p>
             </CardContent>
           </Card>
 
@@ -205,12 +200,12 @@ export default function OrderDetailPage() {
               <CardTitle className="text-base">Shipping Address</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-1">
-              <p>{MOCK_ORDER.shipping.line1}</p>
-              {MOCK_ORDER.shipping.line2 && <p>{MOCK_ORDER.shipping.line2}</p>}
+              <p>{order.shipping_address_line1}</p>
+              {order.shipping_address_line2 && <p>{order.shipping_address_line2}</p>}
               <p>
-                {MOCK_ORDER.shipping.postcode} {MOCK_ORDER.shipping.city}
+                {order.shipping_postcode} {order.shipping_city}
               </p>
-              <p>{MOCK_ORDER.shipping.state}</p>
+              <p>{order.shipping_state}</p>
             </CardContent>
           </Card>
 
@@ -221,23 +216,31 @@ export default function OrderDetailPage() {
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Method</span>
-                <span>{MOCK_ORDER.payment.method}</span>
+                <span>{order.payment_method ?? "-"}</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
-                <span className="text-emerald-600 font-medium">{MOCK_ORDER.payment.status}</span>
+                <span className="text-emerald-600 font-medium">{order.payment_status}</span>
               </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Reference</span>
-                <span className="font-mono text-xs">{MOCK_ORDER.payment.ref}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Paid At</span>
-                <span>{MOCK_ORDER.payment.paidAt}</span>
-              </div>
+              {order.payment_ref && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reference</span>
+                    <span className="font-mono text-xs">{order.payment_ref}</span>
+                  </div>
+                </>
+              )}
+              {order.paid_at && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Paid At</span>
+                    <span>{new Date(order.paid_at).toLocaleString("en-MY")}</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
