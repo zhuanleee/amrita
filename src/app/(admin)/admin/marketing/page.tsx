@@ -283,6 +283,26 @@ export default function MarketingPage() {
   }, [buildChannelStats]);
 
   const buildTimeSeries = useCallback((): TimeSeriesPoint[] => {
+    if (timeRange === "all") {
+      // Group by month for all time
+      const buckets: Record<string, Record<string, number>> = {};
+      for (const o of orders) {
+        const monthKey = o.created_at.slice(0, 7); // YYYY-MM
+        if (!buckets[monthKey]) {
+          buckets[monthKey] = { facebook: 0, instagram: 0, xiaohongshu: 0, web: 0, other: 0 };
+        }
+        const ch = normaliseSource(o.source);
+        buckets[monthKey][ch] = (buckets[monthKey][ch] ?? 0) + 1;
+      }
+      return Object.entries(buckets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, channels]) => {
+          const [y, m] = month.split("-");
+          const label = new Date(Number(y), Number(m) - 1).toLocaleDateString("en-MY", { month: "short", year: "2-digit" });
+          return { date: label, ...channels };
+        });
+    }
+
     const days = Number(timeRange);
     const now = new Date();
     const startDate = new Date();
@@ -518,6 +538,9 @@ export default function MarketingPage() {
                 </TabsTrigger>
                 <TabsTrigger value="90" className="text-xs px-2 py-1">
                   90d
+                </TabsTrigger>
+                <TabsTrigger value="all" className="text-xs px-2 py-1">
+                  All
                 </TabsTrigger>
               </TabsList>
             </Tabs>

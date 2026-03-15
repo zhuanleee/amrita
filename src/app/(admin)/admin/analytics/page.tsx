@@ -55,10 +55,13 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     const days = Number(timeRange);
+    const isAllTime = days === 0;
     const supabase = createClient();
 
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days + 1);
+    if (!isAllTime) {
+      startDate.setDate(startDate.getDate() - days + 1);
+    }
     startDate.setHours(0, 0, 0, 0);
     const startIso = startDate.toISOString();
 
@@ -67,26 +70,40 @@ export default function AnalyticsPage() {
       setLoading(true);
 
       // Revenue data
-      const { data: orders } = await supabase
+      let query = supabase
         .from("orders")
         .select("total, created_at, shipping_state")
-        .gte("created_at", startIso)
         .not("status", "in", '("cancelled","refunded")')
         .order("created_at");
 
-      // Group by date for revenue chart
-      const byDate: Record<string, number> = {};
-      for (let i = 0; i < days; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() - days + 1 + i);
-        const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
-        byDate[key] = 0;
+      if (!isAllTime) {
+        query = query.gte("created_at", startIso);
       }
-      (orders ?? []).forEach((o) => {
-        const d = new Date(o.created_at);
-        const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
-        if (key in byDate) byDate[key] += o.total ?? 0;
-      });
+
+      const { data: orders } = await query;
+
+      // Group by date/month for revenue chart
+      const byDate: Record<string, number> = {};
+      if (isAllTime) {
+        // Group by month for all time
+        (orders ?? []).forEach((o) => {
+          const d = new Date(o.created_at);
+          const key = d.toLocaleDateString("en-MY", { month: "short", year: "2-digit" });
+          byDate[key] = (byDate[key] ?? 0) + (o.total ?? 0);
+        });
+      } else {
+        for (let i = 0; i < days; i++) {
+          const d = new Date();
+          d.setDate(d.getDate() - days + 1 + i);
+          const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+          byDate[key] = 0;
+        }
+        (orders ?? []).forEach((o) => {
+          const d = new Date(o.created_at);
+          const key = d.toLocaleDateString("en-MY", { month: "short", day: "numeric" });
+          if (key in byDate) byDate[key] += o.total ?? 0;
+        });
+      }
       setRevenueData(
         Object.entries(byDate).map(([date, revenue]) => ({
           date,
@@ -120,11 +137,14 @@ export default function AnalyticsPage() {
       }));
 
       // Simpler approach: fetch order IDs separately
-      const { data: orderIdsData } = await supabase
+      let idsQuery = supabase
         .from("orders")
         .select("id")
-        .gte("created_at", startIso)
         .not("status", "in", '("cancelled","refunded")');
+      if (!isAllTime) {
+        idsQuery = idsQuery.gte("created_at", startIso);
+      }
+      const { data: orderIdsData } = await idsQuery;
 
       const validIds = new Set((orderIdsData ?? []).map((o) => o.id));
 
@@ -157,6 +177,7 @@ export default function AnalyticsPage() {
           <TabsTrigger value="7">7 Days</TabsTrigger>
           <TabsTrigger value="30">30 Days</TabsTrigger>
           <TabsTrigger value="90">90 Days</TabsTrigger>
+          <TabsTrigger value="0">All Time</TabsTrigger>
         </TabsList>
       </Tabs>
 
