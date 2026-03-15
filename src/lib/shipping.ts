@@ -22,7 +22,7 @@ const SHIPPING_RATES: Record<string, number> = {
   Labuan: 15,
 };
 
-const FREE_SHIPPING_THRESHOLD = 80;
+const FREE_SHIPPING_THRESHOLD = 50;
 
 export function getShippingFee(state: MalaysianState, subtotal: number): number {
   if (subtotal >= FREE_SHIPPING_THRESHOLD) return 0;

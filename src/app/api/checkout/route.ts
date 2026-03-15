@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getShippingFee } from "@/lib/shipping";
+import { checkRates } from "@/lib/easyparcel";
 import type { MalaysianState } from "@/lib/types";
 import { sendConversionEvent } from "@/lib/meta-capi";
 
@@ -33,6 +34,8 @@ interface CheckoutBody {
   payment_method: string;
   notes?: string;
   utm?: UTMData;
+  shipping_service_id?: string;
+  shipping_courier?: string;
 }
 
 function generateOrderNumber(): string {
@@ -45,7 +48,7 @@ function generateOrderNumber(): string {
 export async function POST(request: Request) {
   try {
     const body: CheckoutBody = await request.json();
-    const { customer, items, payment_method, notes, utm } = body;
+    const { customer, items, payment_method, notes, utm, shipping_service_id, shipping_courier } = body;
 
     if (!customer?.name || !customer?.phone || !customer?.address_line1 || !customer?.city || !customer?.postcode || !customer?.state) {
       return NextResponse.json({ error: "Missing required customer fields" }, { status: 400 });
@@ -124,7 +127,17 @@ export async function POST(request: Request) {
     }
 
     const subtotal = orderItems.reduce((sum, i) => sum + i.line_total, 0);
-    const shippingFee = getShippingFee(customer.state as MalaysianState, subtotal);
+
+    // If a specific EasyParcel service was selected, look up the real rate
+    let shippingFee = getShippingFee(customer.state as MalaysianState, subtotal);
+    if (shipping_service_id && shippingFee > 0) {
+      const rates = await checkRates("50000", customer.postcode, customer.state, 0.3);
+      const matched = rates.find((r) => r.service_id === shipping_service_id);
+      if (matched) {
+        shippingFee = matched.price;
+      }
+    }
+
     const total = subtotal + shippingFee;
     const orderNumber = generateOrderNumber();
 
@@ -199,7 +212,11 @@ export async function POST(request: Request) {
         status: "pending_payment",
         notes: notes || null,
         source: utm?.utm_source || "storefront",
-        metadata: utm ? { utm } : {},
+        metadata: {
+          ...(utm ? { utm } : {}),
+          ...(shipping_service_id ? { shipping_service_id } : {}),
+          ...(shipping_courier ? { shipping_courier } : {}),
+        },
       })
       .select("id, order_number")
       .single();

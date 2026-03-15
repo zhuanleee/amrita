@@ -21,7 +21,7 @@ const shippingRates = [
   { zone: "Klang Valley (KL, Selangor, Putrajaya)", rate: 8.0 },
   { zone: "Peninsular Malaysia", rate: 10.0 },
   { zone: "East Malaysia (Sabah & Sarawak)", rate: 15.0 },
-  { zone: "Free Shipping (above RM80)", rate: 0 },
+  { zone: "Free Shipping (above RM50)", rate: 0 },
 ];
 
 export default function SettingsPage() {
@@ -29,6 +29,9 @@ export default function SettingsPage() {
   const [metaCAPIToken, setMetaCAPIToken] = useState("");
   const [metaSaving, setMetaSaving] = useState(false);
   const [metaLoading, setMetaLoading] = useState(true);
+  const [epApiKey, setEpApiKey] = useState("");
+  const [epSandbox, setEpSandbox] = useState(true);
+  const [epSaving, setEpSaving] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -38,6 +41,8 @@ export default function SettingsPage() {
           const settings = await res.json();
           setMetaPixelId(settings.meta_pixel_id || "");
           setMetaCAPIToken(settings.meta_capi_token || "");
+          setEpApiKey(settings.easyparcel_api_key || "");
+          setEpSandbox(settings.easyparcel_sandbox !== "false");
         }
       } catch {
         // Settings table might not exist yet
@@ -68,6 +73,29 @@ export default function SettingsPage() {
       toast.error("Failed to save settings");
     }
     setMetaSaving(false);
+  };
+
+  const saveEasyParcelSettings = async () => {
+    setEpSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          easyparcel_api_key: epApiKey.trim(),
+          easyparcel_sandbox: epSandbox ? "true" : "false",
+        }),
+      });
+      if (res.ok) {
+        toast.success("EasyParcel settings saved!");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to save settings");
+      }
+    } catch {
+      toast.error("Failed to save settings");
+    }
+    setEpSaving(false);
   };
 
   return (
@@ -130,6 +158,62 @@ export default function SettingsPage() {
               <li>InitiateCheckout — checkout started</li>
               <li>Purchase — order completed (client + server-side)</li>
             </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* EasyParcel Shipping */}
+      <Card className="bg-amrita-cream border-none shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">EasyParcel Shipping</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Connect EasyParcel to get real-time courier rates and auto-generate shipping labels with tracking.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="ep-api-key">API Key</Label>
+            <Input
+              id="ep-api-key"
+              type="password"
+              placeholder="Paste your EasyParcel API key"
+              value={metaLoading ? "" : epApiKey}
+              onChange={(e) => setEpApiKey(e.target.value)}
+              disabled={metaLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Get your API key from EasyParcel Dashboard → Integration → API
+            </p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Sandbox Mode</p>
+              <p className="text-xs text-muted-foreground">
+                Use demo environment for testing (no real charges)
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={epSandbox}
+                onChange={(e) => setEpSandbox(e.target.checked)}
+                disabled={metaLoading}
+              />
+              <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-amrita-teal peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
+            </label>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={saveEasyParcelSettings}
+              disabled={epSaving || metaLoading}
+              className="bg-amrita-gold hover:bg-amrita-gold/90 text-white"
+            >
+              {epSaving ? "Saving..." : "Save"}
+            </Button>
+            {epApiKey && (
+              <span className="text-xs text-amrita-teal font-medium">Connected</span>
+            )}
           </div>
         </CardContent>
       </Card>

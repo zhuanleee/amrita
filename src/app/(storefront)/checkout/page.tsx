@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CreditCard, Wallet, Smartphone } from "lucide-react";
+import { ArrowLeft, CreditCard, Wallet, Smartphone, Truck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,17 @@ import { useCart } from "@/lib/cart";
 import { formatMYR } from "@/lib/currency";
 import { trackInitiateCheckout, trackPurchase } from "@/lib/meta-pixel";
 import { getUTM } from "@/lib/utm";
-import { getShippingFee } from "@/lib/shipping";
+import { getShippingFee, FREE_SHIPPING_THRESHOLD } from "@/lib/shipping";
 import { MALAYSIAN_STATES, type MalaysianState } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+interface CourierRate {
+  courier_name: string;
+  service_id: string;
+  price: number;
+  delivery_days: string;
+  pickup_date: string;
+}
 
 const PAYMENT_METHODS = [
   { id: "fpx", label: "FPX (Online Banking)", icon: CreditCard, description: "Pay via your bank" },
@@ -32,9 +40,59 @@ export default function CheckoutPage() {
   const [shippingState, setShippingState] = useState<MalaysianState>("Kuala Lumpur");
   const [paymentMethod, setPaymentMethod] = useState("fpx");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [courierRates, setCourierRates] = useState<CourierRate[]>([]);
+  const [ratesSource, setRatesSource] = useState<"flat" | "easyparcel">("flat");
+  const [loadingRates, setLoadingRates] = useState(false);
+  const [selectedCourier, setSelectedCourier] = useState<CourierRate | null>(null);
+  const [postcode, setPostcode] = useState("");
 
-  const shippingFee = getShippingFee(shippingState, subtotal);
+  const isFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
+  const shippingFee = isFreeShipping
+    ? 0
+    : selectedCourier && ratesSource === "easyparcel"
+      ? selectedCourier.price
+      : getShippingFee(shippingState, subtotal);
   const total = subtotal + shippingFee;
+
+  // Fetch shipping rates when postcode + state change
+  useEffect(() => {
+    if (isFreeShipping || !postcode || postcode.length < 5) {
+      setCourierRates([]);
+      setSelectedCourier(null);
+      setRatesSource("flat");
+      return;
+    }
+
+    const fetchRates = async () => {
+      setLoadingRates(true);
+      try {
+        const params = new URLSearchParams({
+          postcode,
+          state: shippingState,
+          weight: "0.3",
+        });
+        const res = await fetch(`/api/shipping/rates?${params}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCourierRates(data.rates ?? []);
+          setRatesSource(data.source ?? "flat");
+          if (data.rates?.length > 0) {
+            setSelectedCourier(data.rates[0]);
+          } else {
+            setSelectedCourier(null);
+          }
+        }
+      } catch {
+        setCourierRates([]);
+        setRatesSource("flat");
+        setSelectedCourier(null);
+      }
+      setLoadingRates(false);
+    };
+
+    const debounce = setTimeout(fetchRates, 500);
+    return () => clearTimeout(debounce);
+  }, [postcode, shippingState, isFreeShipping]);
 
   // Track InitiateCheckout once when page loads with items
   const trackedRef = useRef(false);
@@ -75,6 +133,8 @@ export default function CheckoutPage() {
           payment_method: paymentMethod,
           notes: formData.get("notes") || undefined,
           utm: utm || undefined,
+          shipping_service_id: selectedCourier?.service_id || undefined,
+          shipping_courier: selectedCourier?.courier_name || undefined,
         }),
       });
 
@@ -163,7 +223,15 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <Label htmlFor="postcode">Postcode *</Label>
-                    <Input id="postcode" name="postcode" required placeholder="12345" className="mt-1" />
+                    <Input
+                      id="postcode"
+                      name="postcode"
+                      required
+                      placeholder="12345"
+                      className="mt-1"
+                      value={postcode}
+                      onChange={(e) => setPostcode(e.target.value)}
+                    />
                   </div>
                   <div className="col-span-2 sm:col-span-1">
                     <Label htmlFor="state">State *</Label>
@@ -186,6 +254,67 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </Card>
+
+            {/* Shipping Method */}
+            {!isFreeShipping && ratesSource === "easyparcel" && courierRates.length > 0 && (
+              <Card className="p-6 bg-card">
+                <h2 className="text-lg font-medium mb-4">Shipping Method</h2>
+                {loadingRates ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading available couriers...
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {courierRates.map((rate) => (
+                      <button
+                        key={rate.service_id}
+                        type="button"
+                        onClick={() => setSelectedCourier(rate)}
+                        className={cn(
+                          "flex items-center justify-between w-full p-3 rounded-lg border-2 transition-all text-left",
+                          selectedCourier?.service_id === rate.service_id
+                            ? "border-amrita-gold bg-amrita-gold/5"
+                            : "border-border hover:border-amrita-gold/40"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Truck className={cn(
+                            "w-5 h-5",
+                            selectedCourier?.service_id === rate.service_id
+                              ? "text-amrita-gold"
+                              : "text-muted-foreground"
+                          )} />
+                          <div>
+                            <p className="text-sm font-medium">{rate.courier_name}</p>
+                            {rate.delivery_days && (
+                              <p className="text-xs text-muted-foreground">
+                                Est. {rate.delivery_days} working days
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-sm font-semibold">{formatMYR(rate.price)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {isFreeShipping && (
+              <Card className="p-6 bg-card">
+                <div className="flex items-center gap-3">
+                  <Truck className="w-5 h-5 text-amrita-teal" />
+                  <div>
+                    <h2 className="text-lg font-medium">Free Shipping</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Your order qualifies for free shipping (above {formatMYR(FREE_SHIPPING_THRESHOLD)})
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Payment Method */}
             <Card className="p-6 bg-card">
@@ -255,8 +384,18 @@ export default function CheckoutPage() {
                   <span>{formatMYR(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Shipping ({shippingState})</span>
-                  <span>{shippingFee === 0 ? <span className="text-amrita-teal">Free</span> : formatMYR(shippingFee)}</span>
+                  <span className="text-muted-foreground">
+                    Shipping{selectedCourier && ratesSource === "easyparcel" ? ` (${selectedCourier.courier_name})` : ` (${shippingState})`}
+                  </span>
+                  <span>
+                    {shippingFee === 0 ? (
+                      <span className="text-amrita-teal">Free</span>
+                    ) : loadingRates ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : (
+                      formatMYR(shippingFee)
+                    )}
+                  </span>
                 </div>
                 <Separator />
                 <div className="flex justify-between text-base font-semibold pt-1">

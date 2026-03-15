@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Truck, Download, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import { OrderStatusBadge } from "@/components/admin/order-status-badge";
 import { formatMYR } from "@/lib/currency";
 import { createClient } from "@/lib/supabase/client";
 import { OrderStatusUpdater } from "@/components/admin/order-status-updater";
+import { toast } from "sonner";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface OrderDetailData {
@@ -34,6 +35,47 @@ export default function OrderDetailPage() {
   const [data, setData] = useState<OrderDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [shipping, setShipping] = useState(false);
+
+  const handleShipOrder = async () => {
+    if (!data?.order) return;
+    setShipping(true);
+    try {
+      const res = await fetch("/api/shipping/ship", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_id: data.order.id }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        toast.error(result.error || "Failed to ship order");
+      } else {
+        toast.success(`Shipped! AWB: ${result.awb}`);
+        // Refresh order data
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                order: {
+                  ...prev.order,
+                  tracking_number: result.awb,
+                  status: "shipped",
+                  shipped_at: new Date().toISOString(),
+                  metadata: {
+                    ...(prev.order.metadata ?? {}),
+                    awb_label_url: result.label_url,
+                    tracking_url: result.tracking_url,
+                  },
+                },
+              }
+            : prev
+        );
+      }
+    } catch {
+      toast.error("Failed to ship order");
+    }
+    setShipping(false);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -243,6 +285,90 @@ export default function OrderDetailPage() {
                 {order.shipping_postcode} {order.shipping_city}
               </p>
               <p>{order.shipping_state}</p>
+            </CardContent>
+          </Card>
+
+          {/* Shipping / Tracking */}
+          <Card className="bg-amrita-cream border-none shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base">Shipping</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {order.tracking_number ? (
+                <>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">AWB / Tracking No.</span>
+                      <span className="font-mono text-xs">{order.tracking_number}</span>
+                    </div>
+                    {order.shipped_at && (
+                      <>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Shipped At</span>
+                          <span>{new Date(order.shipped_at).toLocaleString("en-MY")}</span>
+                        </div>
+                      </>
+                    )}
+                    {order.metadata?.shipping_courier && (
+                      <>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Courier</span>
+                          <span>{String(order.metadata.shipping_courier)}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    {order.metadata?.tracking_url && (
+                      <a
+                        href={String(order.metadata.tracking_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                          <ExternalLink className="size-3.5" />
+                          Track
+                        </Button>
+                      </a>
+                    )}
+                    {order.metadata?.awb_label_url && (
+                      <a
+                        href={String(order.metadata.awb_label_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                          <Download className="size-3.5" />
+                          Label
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {(order.status === "confirmed" || order.status === "processing") && order.metadata?.shipping_service_id ? (
+                    <Button
+                      onClick={handleShipOrder}
+                      disabled={shipping}
+                      className="w-full bg-amrita-gold hover:bg-amrita-gold/90 text-white gap-2"
+                    >
+                      <Truck className="size-4" />
+                      {shipping ? "Shipping..." : "Ship Order via EasyParcel"}
+                    </Button>
+                  ) : (order.status === "confirmed" || order.status === "processing") ? (
+                    <p className="text-sm text-muted-foreground">
+                      No EasyParcel service selected. Ship manually and update tracking.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Order must be confirmed or processing to ship.
+                    </p>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
