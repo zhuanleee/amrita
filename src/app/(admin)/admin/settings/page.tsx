@@ -287,6 +287,52 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Customer Authentication */}
+      <Card className="bg-amrita-cream border-none shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Customer Authentication</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-full bg-green-100">
+              <span className="text-green-700 text-xs font-bold">G</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Google OAuth: Enabled via Supabase Auth</p>
+              <p className="text-xs text-muted-foreground">
+                Customers can sign in with Google to save their info and view order history.
+              </p>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Setup:</p>
+            <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+              <li>
+                Configure in{" "}
+                <a
+                  href="https://supabase.com/dashboard/project/sxlibbtmgbbaqsehxwll/auth/providers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amrita-teal underline"
+                >
+                  Supabase Dashboard &rarr; Authentication &rarr; Providers &rarr; Google
+                </a>
+              </li>
+              <li>
+                Requires Google Cloud Console OAuth credentials (Client ID + Client Secret)
+              </li>
+              <li>
+                Set authorized redirect URI to:{" "}
+                <code className="bg-muted px-1 py-0.5 rounded text-[11px]">
+                  https://sxlibbtmgbbaqsehxwll.supabase.co/auth/v1/callback
+                </code>
+              </li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Store Info */}
       <Card className="bg-amrita-cream border-none shadow-sm">
         <CardHeader>

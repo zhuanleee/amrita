@@ -149,20 +149,31 @@ export async function POST(request: Request) {
       .eq("phone", customer.phone)
       .single();
 
+    // Check if there's a logged-in user to link the customer record
+    let authUserId: string | null = null;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      authUserId = authUser.id;
+    }
+
     if (existingCustomer) {
       customerId = existingCustomer.id;
-      // Update customer info
+      // Update customer info, and link auth_user_id if logged in
+      const updateData: Record<string, unknown> = {
+        name: customer.name,
+        email: customer.email || null,
+        address_line1: customer.address_line1,
+        address_line2: customer.address_line2 || null,
+        city: customer.city,
+        postcode: customer.postcode,
+        state: customer.state,
+      };
+      if (authUserId) {
+        updateData.auth_user_id = authUserId;
+      }
       await supabase
         .from("customers")
-        .update({
-          name: customer.name,
-          email: customer.email || null,
-          address_line1: customer.address_line1,
-          address_line2: customer.address_line2 || null,
-          city: customer.city,
-          postcode: customer.postcode,
-          state: customer.state,
-        })
+        .update(updateData)
         .eq("id", customerId);
     } else {
       const { data: newCustomer, error: customerError } = await supabase
@@ -179,6 +190,7 @@ export async function POST(request: Request) {
           country: "MY",
           tags: [],
           metadata: {},
+          ...(authUserId ? { auth_user_id: authUserId } : {}),
         })
         .select("id")
         .single();

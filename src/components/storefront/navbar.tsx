@@ -13,6 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { CartDrawer } from "./cart-drawer";
+import { CustomerAuth } from "./customer-auth";
 
 function DewdropLogo({ className = "", size = 40 }: { className?: string; size?: number }) {
   return (
@@ -116,8 +117,10 @@ export function Navbar() {
           </Link>
         </nav>
 
-        {/* Cart */}
-        <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+        {/* Auth + Cart */}
+        <div className="flex items-center gap-1">
+          <CustomerAuth />
+          <Sheet open={cartOpen} onOpenChange={setCartOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="relative" aria-label="Open cart">
               <ShoppingBag className="size-5" />
@@ -130,6 +133,7 @@ export function Navbar() {
           </SheetTrigger>
           <CartDrawer onClose={() => setCartOpen(false)} />
         </Sheet>
+        </div>
       </div>
     </header>
   );

@@ -19,6 +19,7 @@ import { getUTM } from "@/lib/utm";
 import { getShippingFee, FREE_SHIPPING_THRESHOLD } from "@/lib/shipping";
 import { MALAYSIAN_STATES, type MalaysianState } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 interface CourierRate {
   courier_name: string;
@@ -45,6 +46,47 @@ export default function CheckoutPage() {
   const [loadingRates, setLoadingRates] = useState(false);
   const [selectedCourier, setSelectedCourier] = useState<CourierRate | null>(null);
   const [postcode, setPostcode] = useState("");
+
+  // Auto-fill from logged-in customer
+  const [prefillName, setPrefillName] = useState("");
+  const [prefillEmail, setPrefillEmail] = useState("");
+  const [prefillPhone, setPrefillPhone] = useState("");
+  const [prefillAddress1, setPrefillAddress1] = useState("");
+  const [prefillAddress2, setPrefillAddress2] = useState("");
+  const [prefillCity, setPrefillCity] = useState("");
+  const [prefilled, setPrefilled] = useState(false);
+
+  useEffect(() => {
+    const loadCustomerData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("auth_user_id", user.id)
+        .single();
+
+      if (customer) {
+        setPrefillName(customer.name || user.user_metadata?.full_name || "");
+        setPrefillEmail(customer.email || user.email || "");
+        setPrefillPhone(customer.phone || "");
+        setPrefillAddress1(customer.address_line1 || "");
+        setPrefillAddress2(customer.address_line2 || "");
+        setPrefillCity(customer.city || "");
+        if (customer.postcode) setPostcode(customer.postcode);
+        if (customer.state) setShippingState(customer.state as MalaysianState);
+        setPrefilled(true);
+      } else {
+        // No customer record yet, still prefill name/email from auth
+        setPrefillName(user.user_metadata?.full_name || user.user_metadata?.name || "");
+        setPrefillEmail(user.email || "");
+        setPrefilled(true);
+      }
+    };
+    loadCustomerData();
+  }, []);
 
   const isFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
   const shippingFee = isFreeShipping
@@ -191,15 +233,15 @@ export default function CheckoutPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="name">Full Name *</Label>
-                  <Input id="name" name="name" required placeholder="Your full name" className="mt-1" />
+                  <Input id="name" name="name" required placeholder="Your full name" className="mt-1" defaultValue={prefillName} key={`name-${prefilled}`} />
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone Number *</Label>
-                  <Input id="phone" name="phone" type="tel" required placeholder="012-345 6789" className="mt-1" />
+                  <Input id="phone" name="phone" type="tel" required placeholder="012-345 6789" className="mt-1" defaultValue={prefillPhone} key={`phone-${prefilled}`} />
                 </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" name="email" type="email" placeholder="your@email.com" className="mt-1" />
+                  <Input id="email" name="email" type="email" placeholder="your@email.com" className="mt-1" defaultValue={prefillEmail} key={`email-${prefilled}`} />
                 </div>
               </div>
             </Card>
@@ -210,16 +252,16 @@ export default function CheckoutPage() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="address1">Address Line 1 *</Label>
-                  <Input id="address1" name="address1" required placeholder="Street address" className="mt-1" />
+                  <Input id="address1" name="address1" required placeholder="Street address" className="mt-1" defaultValue={prefillAddress1} key={`addr1-${prefilled}`} />
                 </div>
                 <div>
                   <Label htmlFor="address2">Address Line 2</Label>
-                  <Input id="address2" name="address2" placeholder="Apartment, unit, etc." className="mt-1" />
+                  <Input id="address2" name="address2" placeholder="Apartment, unit, etc." className="mt-1" defaultValue={prefillAddress2} key={`addr2-${prefilled}`} />
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <Label htmlFor="city">City *</Label>
-                    <Input id="city" name="city" required placeholder="City" className="mt-1" />
+                    <Input id="city" name="city" required placeholder="City" className="mt-1" defaultValue={prefillCity} key={`city-${prefilled}`} />
                   </div>
                   <div>
                     <Label htmlFor="postcode">Postcode *</Label>
