@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 
     if (!access_token) {
       return NextResponse.redirect(
-        `${origin}/admin/settings?easyparcel=error&reason=no_access_token&debug=${encodeURIComponent(JSON.stringify(Object.keys(tokenData)))}`
+        `${origin}/admin/settings?easyparcel=error&reason=no_access_token&debug=${encodeURIComponent(JSON.stringify(tokenData))}`
       );
     }
 
