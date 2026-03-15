@@ -37,14 +37,32 @@ export async function GET(request: Request) {
           rates: easyparcelRates,
         });
       }
+      // Return debug info if no rates but token exists
+      return NextResponse.json({
+        source: "flat",
+        debug: "token_exists_but_no_rates",
+        token_prefix: accessToken.substring(0, 10),
+        rates: [{
+          courier_name: "Standard Shipping",
+          service_id: "",
+          price: getShippingFee(state, 0),
+          delivery_days: "3-5",
+          pickup_date: "",
+        }],
+      });
     } catch (err) {
-      console.error("EasyParcel checkRates error:", err);
+      return NextResponse.json({
+        source: "flat",
+        debug: `error: ${String(err)}`,
+        rates: [{
+          courier_name: "Standard Shipping",
+          service_id: "",
+          price: getShippingFee(state, 0),
+          delivery_days: "3-5",
+          pickup_date: "",
+        }],
+      });
     }
-  }
-
-  // Debug: log why EasyParcel rates weren't returned
-  if (!accessToken) {
-    console.log("EasyParcel: No access token found");
   }
 
   // Fall back to flat rates
