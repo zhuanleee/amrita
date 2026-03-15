@@ -1,15 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { trackPageView } from "@/lib/meta-pixel";
 
 export function MetaPixel() {
-  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+  const envPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+  const [pixelId, setPixelId] = useState(envPixelId || "");
+
+  useEffect(() => {
+    // If no env var pixel ID, try fetching from settings API
+    if (!envPixelId) {
+      fetch("/api/settings")
+        .then((r) => r.ok ? r.json() : null)
+        .then((settings) => {
+          if (settings?.meta_pixel_id) {
+            setPixelId(settings.meta_pixel_id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [envPixelId]);
 
   useEffect(() => {
     if (!pixelId) return;
+    if (window.fbq) return; // Already initialized
 
-    // Initialize Meta Pixel
     /* eslint-disable */
     (function (f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
       if (f.fbq) return;
@@ -34,7 +49,8 @@ export function MetaPixel() {
     );
     /* eslint-enable */
 
-    window.fbq?.("init", pixelId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).fbq?.("init", pixelId);
     trackPageView();
   }, [pixelId]);
 
