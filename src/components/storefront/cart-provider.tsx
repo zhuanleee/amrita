@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { CartContext, loadCart, saveCart } from "@/lib/cart";
 import type { CartItem, Product, ProductVariant } from "@/lib/types";
+import { trackAddToCart } from "@/lib/meta-pixel";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -19,6 +20,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback(
     (product: Product, variant?: ProductVariant, quantity = 1) => {
+      const price = variant?.price ?? product.price;
+      trackAddToCart(
+        product.name_en || product.name,
+        product.id,
+        price,
+        quantity
+      );
+
       setItems((prev) => {
         const variantId = variant?.id ?? null;
         const existing = prev.find(

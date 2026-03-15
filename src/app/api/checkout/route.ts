@@ -2,11 +2,20 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getShippingFee } from "@/lib/shipping";
 import type { MalaysianState } from "@/lib/types";
+import { sendConversionEvent } from "@/lib/meta-capi";
 
 interface CheckoutItem {
   product_id: string;
   variant_id: string | null;
   quantity: number;
+}
+
+interface UTMData {
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  utm_term?: string;
 }
 
 interface CheckoutBody {
@@ -23,6 +32,7 @@ interface CheckoutBody {
   items: CheckoutItem[];
   payment_method: string;
   notes?: string;
+  utm?: UTMData;
 }
 
 function generateOrderNumber(): string {
@@ -35,7 +45,7 @@ function generateOrderNumber(): string {
 export async function POST(request: Request) {
   try {
     const body: CheckoutBody = await request.json();
-    const { customer, items, payment_method, notes } = body;
+    const { customer, items, payment_method, notes, utm } = body;
 
     if (!customer?.name || !customer?.phone || !customer?.address_line1 || !customer?.city || !customer?.postcode || !customer?.state) {
       return NextResponse.json({ error: "Missing required customer fields" }, { status: 400 });
@@ -188,8 +198,8 @@ export async function POST(request: Request) {
         payment_status: "pending",
         status: "pending_payment",
         notes: notes || null,
-        source: "storefront",
-        metadata: {},
+        source: utm?.utm_source || "storefront",
+        metadata: utm ? { utm } : {},
       })
       .select("id, order_number")
       .single();
@@ -211,6 +221,21 @@ export async function POST(request: Request) {
     if (itemsError) {
       return NextResponse.json({ error: "Failed to create order items" }, { status: 500 });
     }
+
+    // Fire Meta Conversions API event (non-blocking)
+    sendConversionEvent("Purchase", {
+      value: total,
+      currency: "MYR",
+      orderId: order.order_number,
+      email: customer.email,
+      phone: customer.phone,
+      contents: orderItems.map((item) => ({
+        id: item.product_id,
+        quantity: item.quantity,
+      })),
+    }).catch(() => {
+      // Silently ignore CAPI errors — don't block the order response
+    });
 
     return NextResponse.json({
       id: order.id,

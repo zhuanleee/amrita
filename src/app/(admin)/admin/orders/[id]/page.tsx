@@ -246,6 +246,59 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Campaign Source (UTM) */}
+          {order.metadata?.utm && (
+            <Card className="bg-amrita-cream border-none shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Campaign Source</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {order.metadata.utm.utm_source && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Source</span>
+                    <span>{order.metadata.utm.utm_source}</span>
+                  </div>
+                )}
+                {order.metadata.utm.utm_medium && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Medium</span>
+                      <span>{order.metadata.utm.utm_medium}</span>
+                    </div>
+                  </>
+                )}
+                {order.metadata.utm.utm_campaign && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Campaign</span>
+                      <span>{order.metadata.utm.utm_campaign}</span>
+                    </div>
+                  </>
+                )}
+                {order.metadata.utm.utm_content && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Content</span>
+                      <span>{order.metadata.utm.utm_content}</span>
+                    </div>
+                  </>
+                )}
+                {order.metadata.utm.utm_term && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Term</span>
+                      <span>{order.metadata.utm.utm_term}</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="bg-amrita-cream border-none shadow-sm">
             <CardHeader>
               <CardTitle className="text-base">Payment</CardTitle>

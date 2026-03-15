@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard, Wallet, Smartphone } from "lucide-react";
@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useCart } from "@/lib/cart";
 import { formatMYR } from "@/lib/currency";
+import { trackInitiateCheckout, trackPurchase } from "@/lib/meta-pixel";
+import { getUTM } from "@/lib/utm";
 import { getShippingFee } from "@/lib/shipping";
 import { MALAYSIAN_STATES, type MalaysianState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -34,12 +36,22 @@ export default function CheckoutPage() {
   const shippingFee = getShippingFee(shippingState, subtotal);
   const total = subtotal + shippingFee;
 
+  // Track InitiateCheckout once when page loads with items
+  const trackedRef = useRef(false);
+  useEffect(() => {
+    if (!trackedRef.current && itemCount > 0) {
+      trackInitiateCheckout(subtotal, itemCount);
+      trackedRef.current = true;
+    }
+  }, [subtotal, itemCount]);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
       const formData = new FormData(e.currentTarget);
+      const utm = getUTM();
 
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -62,6 +74,7 @@ export default function CheckoutPage() {
           })),
           payment_method: paymentMethod,
           notes: formData.get("notes") || undefined,
+          utm: utm || undefined,
         }),
       });
 
@@ -71,6 +84,7 @@ export default function CheckoutPage() {
         throw new Error(data.error || "Failed to place order");
       }
 
+      trackPurchase(data.order_number || data.id, total);
       clearCart();
       router.push(`/order/${data.id}`);
     } catch (err) {

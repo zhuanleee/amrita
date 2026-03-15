@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Minus, Plus, ShoppingBag, ArrowLeft } from "lucide-react";
 import { useCart } from "@/lib/cart";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { trackViewContent } from "@/lib/meta-pixel";
 
 interface ProductDetailProps {
   product: Product;
@@ -23,6 +24,10 @@ export function ProductDetail({ product, variants }: ProductDetailProps) {
 
   const selectedVariant = variants.find((v) => v.id === selectedVariantId);
   const displayPrice = selectedVariant?.price ?? product.price;
+
+  useEffect(() => {
+    trackViewContent(product.name_en || product.name, product.id, displayPrice);
+  }, [product.id, product.name, product.name_en, displayPrice]);
 
   const isNavy = product.variant_color === "navy";
 
