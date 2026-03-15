@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getShippingFee } from "@/lib/shipping";
-import { checkRates } from "@/lib/easyparcel";
+import { checkRates, getAccessToken } from "@/lib/easyparcel";
 import type { MalaysianState } from "@/lib/types";
 import { sendConversionEvent } from "@/lib/meta-capi";
 
@@ -131,10 +131,13 @@ export async function POST(request: Request) {
     // If a specific EasyParcel service was selected, look up the real rate
     let shippingFee = getShippingFee(customer.state as MalaysianState, subtotal);
     if (shipping_service_id && shippingFee > 0) {
-      const rates = await checkRates("50000", customer.postcode, customer.state, 0.3);
-      const matched = rates.find((r) => r.service_id === shipping_service_id);
-      if (matched) {
-        shippingFee = matched.price;
+      const accessToken = await getAccessToken();
+      if (accessToken) {
+        const rates = await checkRates(accessToken, "50000", customer.postcode, customer.state, 0.3);
+        const matched = rates.find((r) => r.service_id === shipping_service_id);
+        if (matched) {
+          shippingFee = matched.price;
+        }
       }
     }
 

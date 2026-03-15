@@ -31,9 +31,8 @@ export default function SettingsPage() {
   const [metaLoading, setMetaLoading] = useState(true);
   const [xhsPixelId, setXhsPixelId] = useState("");
   const [xhsSaving, setXhsSaving] = useState(false);
-  const [epApiKey, setEpApiKey] = useState("");
-  const [epSandbox, setEpSandbox] = useState(true);
-  const [epSaving, setEpSaving] = useState(false);
+  const [epConnected, setEpConnected] = useState(false);
+  const [epDisconnecting, setEpDisconnecting] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -44,8 +43,7 @@ export default function SettingsPage() {
           setMetaPixelId(settings.meta_pixel_id || "");
           setMetaCAPIToken(settings.meta_capi_token || "");
           setXhsPixelId(settings.xhs_pixel_id || "");
-          setEpApiKey(settings.easyparcel_api_key || "");
-          setEpSandbox(settings.easyparcel_sandbox !== "false");
+          setEpConnected(!!settings.easyparcel_access_token);
         }
       } catch {
         // Settings table might not exist yet
@@ -100,27 +98,41 @@ export default function SettingsPage() {
     setXhsSaving(false);
   };
 
-  const saveEasyParcelSettings = async () => {
-    setEpSaving(true);
+  // Show toast on EasyParcel OAuth callback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const epStatus = params.get("easyparcel");
+    if (epStatus === "connected") {
+      toast.success("EasyParcel account connected successfully!");
+      setEpConnected(true);
+    } else if (epStatus === "error") {
+      toast.error("Failed to connect EasyParcel account. Please try again.");
+    }
+  }, []);
+
+  const disconnectEasyParcel = async () => {
+    setEpDisconnecting(true);
     try {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          easyparcel_api_key: epApiKey.trim(),
-          easyparcel_sandbox: epSandbox ? "true" : "false",
+          easyparcel_access_token: "",
+          easyparcel_refresh_token: "",
+          easyparcel_expires_at: "",
         }),
       });
       if (res.ok) {
-        toast.success("EasyParcel settings saved!");
+        setEpConnected(false);
+        toast.success("EasyParcel account disconnected.");
       } else {
-        const data = await res.json();
-        toast.error(data.error || "Failed to save settings");
+        toast.error("Failed to disconnect EasyParcel.");
       }
     } catch {
-      toast.error("Failed to save settings");
+      toast.error("Failed to disconnect EasyParcel.");
     }
-    setEpSaving(false);
+    setEpDisconnecting(false);
   };
 
   return (
@@ -238,52 +250,39 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Connect EasyParcel to get real-time courier rates and auto-generate shipping labels with tracking.
+            Connect your EasyParcel account via OAuth2 to get real-time courier rates and auto-generate shipping labels with tracking.
           </p>
-          <div className="space-y-2">
-            <Label htmlFor="ep-api-key">API Key</Label>
-            <Input
-              id="ep-api-key"
-              type="password"
-              placeholder="Paste your EasyParcel API key"
-              value={metaLoading ? "" : epApiKey}
-              onChange={(e) => setEpApiKey(e.target.value)}
-              disabled={metaLoading}
-            />
-            <p className="text-xs text-muted-foreground">
-              Get your API key from EasyParcel Dashboard → Integration → API
-            </p>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Sandbox Mode</p>
-              <p className="text-xs text-muted-foreground">
-                Use demo environment for testing (no real charges)
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={epSandbox}
-                onChange={(e) => setEpSandbox(e.target.checked)}
+          {epConnected ? (
+            <>
+              <div className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2">
+                <div className="size-2 rounded-full bg-green-500" />
+                <span className="text-sm font-medium text-green-800">
+                  EasyParcel account connected
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                onClick={disconnectEasyParcel}
+                disabled={epDisconnecting}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                {epDisconnecting ? "Disconnecting..." : "Disconnect"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                asChild
+                className="bg-amrita-gold hover:bg-amrita-gold/90 text-white"
                 disabled={metaLoading}
-              />
-              <div className="w-11 h-6 bg-muted rounded-full peer peer-checked:bg-amrita-teal peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
-            </label>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={saveEasyParcelSettings}
-              disabled={epSaving || metaLoading}
-              className="bg-amrita-gold hover:bg-amrita-gold/90 text-white"
-            >
-              {epSaving ? "Saving..." : "Save"}
-            </Button>
-            {epApiKey && (
-              <span className="text-xs text-amrita-teal font-medium">Connected</span>
-            )}
-          </div>
+              >
+                <a href="/api/easyparcel/connect">Connect EasyParcel Account</a>
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                You will be redirected to EasyParcel to authorize access. Choose Demo or Live account.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 

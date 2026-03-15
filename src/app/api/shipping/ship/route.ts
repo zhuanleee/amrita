@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createShipment, payAndGetAWB } from "@/lib/easyparcel";
+import { createShipment, getAccessToken } from "@/lib/easyparcel";
 
 export async function POST(request: Request) {
   try {
@@ -30,6 +30,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Get EasyParcel access token
+    const accessToken = await getAccessToken();
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "EasyParcel account not connected. Please connect in Settings." },
+        { status: 400 }
+      );
+    }
+
     // Determine service_id from order metadata
     const serviceId = (order.metadata as Record<string, unknown>)?.shipping_service_id as string | undefined;
 
@@ -54,8 +64,8 @@ export async function POST(request: Request) {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const collectDate = tomorrow.toISOString().slice(0, 10);
 
-    // Create shipment
-    const shipment = await createShipment({
+    // Create shipment via OAuth2 API
+    const shipment = await createShipment(accessToken, {
       serviceId,
       receiverName: order.customer_name,
       receiverPhone: order.customer_phone,
@@ -76,29 +86,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Pay and get AWB
-    const awbResult = await payAndGetAWB(shipment.order_no);
-
-    if (!awbResult || !awbResult.awb) {
-      return NextResponse.json(
-        { error: "Failed to get AWB from EasyParcel. Shipment created but not paid." },
-        { status: 500 }
-      );
-    }
-
-    // Update the order in Supabase
+    // Update the order in Supabase with tracking info
     const existingMetadata = (order.metadata as Record<string, unknown>) ?? {};
     const { error: updateError } = await supabase
       .from("orders")
       .update({
-        tracking_number: awbResult.awb,
+        tracking_number: shipment.parcel_no || shipment.order_no,
         status: "shipped",
         shipped_at: new Date().toISOString(),
         metadata: {
           ...existingMetadata,
           easyparcel_order_no: shipment.order_no,
-          awb_label_url: awbResult.awb_label_url,
-          tracking_url: awbResult.tracking_url,
+          easyparcel_parcel_no: shipment.parcel_no,
         },
       })
       .eq("id", order_id);
@@ -108,9 +107,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      awb: awbResult.awb,
-      tracking_url: awbResult.tracking_url,
-      label_url: awbResult.awb_label_url,
+      order_no: shipment.order_no,
+      parcel_no: shipment.parcel_no,
     });
   } catch (err) {
     console.error("Ship order error:", err);

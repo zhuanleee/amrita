@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkRates } from "@/lib/easyparcel";
+import { checkRates, getAccessToken } from "@/lib/easyparcel";
 import { getShippingFee } from "@/lib/shipping";
 import type { MalaysianState } from "@/lib/types";
 
@@ -18,14 +18,24 @@ export async function GET(request: Request) {
     );
   }
 
-  // Try EasyParcel rates first
-  const easyparcelRates = await checkRates(SENDER_POSTCODE, postcode, state, weight);
+  // Try EasyParcel rates first (OAuth2)
+  const accessToken = await getAccessToken();
 
-  if (easyparcelRates.length > 0) {
-    return NextResponse.json({
-      source: "easyparcel",
-      rates: easyparcelRates,
-    });
+  if (accessToken) {
+    const easyparcelRates = await checkRates(
+      accessToken,
+      SENDER_POSTCODE,
+      postcode,
+      state,
+      weight
+    );
+
+    if (easyparcelRates.length > 0) {
+      return NextResponse.json({
+        source: "easyparcel",
+        rates: easyparcelRates,
+      });
+    }
   }
 
   // Fall back to flat rates
